@@ -2,7 +2,7 @@ mod rng;
 use rng::{SimpleRng, shuffle_slice};
 
 pub trait ModelDefinition<D, P> {
-    fn gradient_kernel(&self, data_sample: &D, parameters: &P) -> Vec<f64>;
+    fn gradient_compute(&self, data_sample: &D, parameters: &P) -> Vec<f64>;
     fn update_parameters(&self, parameters: &mut P, gradients: &[f64], learning_rate: f64);
     fn calculate_loss(&self, _dataset: &[D], _parameters: &P) -> Option<f64> {
         None
@@ -61,24 +61,20 @@ impl StochasticGradientDescent {
 
         let mut rng = SimpleRng::new(self.rng_seed);
         let mut indices: Vec<usize> = (0..n_samples).collect();
-
         for epoch in 0..self.epochs {
             if self.shuffle {
                 shuffle_slice(&mut indices, &mut rng);
             }
-
             for batch_start in (0..n_samples).step_by(effective_batch_size) {
                 let batch_end = (batch_start + effective_batch_size).min(n_samples);
                 if batch_start == batch_end {
                     continue;
                 }
-
                 let current_batch_indices = &indices[batch_start..batch_end];
                 let mut accumulated_gradients: Option<Vec<f64>> = None;
-
                 for &data_idx in current_batch_indices {
                     let data_sample = &dataset[data_idx];
-                    let sample_gradient = model.gradient_kernel(data_sample, parameters);
+                    let sample_gradient = model.gradient_compute(data_sample, parameters);
 
                     if accumulated_gradients.is_none() {
                         accumulated_gradients = Some(sample_gradient);
@@ -87,7 +83,7 @@ impl StochasticGradientDescent {
                             if acc_grads.len() != sample_gradient.len() {
                                 panic!(
                                     "Gradient dimension mismatch. Expected {}, got {}. \
-                                     Ensure gradient_kernel consistently returns gradients of the same length.",
+                                     Ensure gradient compute consistently returns gradients of the same length.",
                                     acc_grads.len(),
                                     sample_gradient.len()
                                 );
@@ -137,7 +133,7 @@ mod tests {
         num_features: usize,
     }
     impl ModelDefinition<SampleData, Vec<f64>> for LinearRegressionModel {
-        fn gradient_kernel(&self, data_sample: &SampleData, parameters: &Vec<f64>) -> Vec<f64> {
+        fn gradient_compute(&self, data_sample: &SampleData, parameters: &Vec<f64>) -> Vec<f64> {
             if self.num_features == 0 {
                 // Model with only bias
                 if parameters.len() != 1 {
@@ -151,7 +147,7 @@ mod tests {
             // +1 for bias
             if parameters.len() != self.num_features + 1 {
                 panic!(
-                    "Parameter length mismatch in gradient_kernel. Expected {}, got {}. Features: {}",
+                    "Parameter length mismatch in gradient compute. Expected {}, got {}. Features: {}",
                     self.num_features + 1,
                     parameters.len(),
                     self.num_features
